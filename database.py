@@ -1,4 +1,5 @@
 import sqlite3
+import bcrypt
 
 DB_NAME = "compliance.db"
 
@@ -39,6 +40,36 @@ def create_tables():
 
     conn.commit()
     conn.close()
+
+def create_user(name: str, username: str, password: str, role: str, zone: str = None) -> int:
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO users (name, username, password_hash, role, zone)
+        VALUES (?, ?, ?, ?, ?)
+    """, (name, username, password_hash, role, zone))
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+    return user_id
+
+def verify_login(username: str, password: str) -> dict | None:
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    user = cursor.fetchone()
+    conn.close()
+
+    if user is None:
+        return None
+
+    if bcrypt.checkpw(password.encode("utf-8"), user["password_hash"]):
+        return dict(user)
+    else:
+        return None
 
 def save_record(record: dict) -> int:
     conn = sqlite3.connect(DB_NAME)
@@ -93,3 +124,13 @@ if __name__ == "__main__":
 
     records = get_records_by_officer(1)
     print(f"Records for officer 1: {records}")
+
+    print("\n--- Testing users ---")
+    new_user_id = create_user("Suresh Patil", "suresh1", "mypassword123", "officer", "Pune")
+    print(f"Created user with ID: {new_user_id}")
+
+    result = verify_login("suresh1", "mypassword123")
+    print(f"Login with correct password: {result}")
+
+    result_wrong = verify_login("suresh1", "wrongpassword")
+    print(f"Login with wrong password: {result_wrong}")
